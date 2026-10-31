@@ -2,11 +2,6 @@ name: Build WSL2 kernel with HFS+ support
 
 on:
   workflow_dispatch:
-  push:
-branch:
-      - main
-      - master
-  pull_request:
 
 jobs:
   build-wsl-kernel:
