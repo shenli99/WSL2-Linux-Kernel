@@ -1,0 +1,68 @@
+name: Build WSL2 kernel with HFS+ support
+
+on:
+  workflow_dispatch:
+  push:
+branch:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build-wsl-kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            flex \
+            bison \
+            dwarves \
+            libssl-dev \
+            libelf-dev \
+            cpio \
+            qemu-utils \
+            rsync \
+            bc \
+            git
+
+      - name: Prepare WSL config and enable HFS+
+        run: |
+          set -euxo pipefail
+          cp Microsoft/config-wsl .config
+
+          # Explicitly enable HFS and HFS+ support
+          ./scripts/config --enable CONFIG_HFS_FS
+          ./scripts/config --enable CONFIG_HFSPLUS_FS
+
+          make olddefconfig
+
+      - name: Verify HFS+ is enabled
+        run: |
+          grep -E '^(# )?CONFIG_HFS_FS|^(# )?CONFIG_HFSPLUS_FS' .config || true
+
+      - name: Build kernel and modules
+        run: |
+          set -euxo pipefail
+          make -j"$(nproc)" KCONFIG_CONFIG=.config vmlinux modules
+
+      - name: Stage build artifacts
+        run: |
+          set -euxo pipefail
+          mkdir -p artifacts
+          make INSTALL_MOD_PATH="$PWD/artifacts/modules" KCONFIG_CONFIG=.config modules_install
+          cp .config artifacts/config-wsl-hfsplus
+          cp arch/x86/boot/bzImage artifacts/bzImage
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsl2-kernel-hfsplus
+          path: artifacts/
